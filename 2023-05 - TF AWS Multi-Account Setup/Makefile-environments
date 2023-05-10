@@ -1,0 +1,62 @@
+###
+# Variables
+###
+
+TF = docker run --rm \
+	--volume $(shell pwd)/:/src/ \
+	--workdir /src/ \
+	--env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+	--env AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+	--env AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN} \
+	--interactive \
+	public.ecr.aws/hashicorp/terraform:1.3.0
+
+TF_EXEC = docker run --rm \
+	--volume $(shell pwd)/:/src/ \
+	--workdir /src/ \
+	--env AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+	--env AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+	--env AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN} \
+	--interactive \
+	--tty \
+	--entrypoint /bin/sh \
+	public.ecr.aws/hashicorp/terraform:1.3.0
+
+env_short    = $(ENV)
+env_detected = $(shell cat .terraform/environment)
+
+##
+# tput Coloring
+##
+
+tput_yellow = $(shell tput setaf 3)
+tput_end    = $(shell tput sgr0)
+
+###
+# Targets: Essentials
+###
+
+.PHONY: init
+init:
+	$(if $(shell [ -n "$(env_short)" ] && echo 1), , $(error ENV argument was not passed into makefile))
+
+	@echo "\n$(tput_yellow)Initialising TF environment for $(env_short)$(tput_end)"
+	$(TF) init -backend-config=envs/$(env_short).tfbackend -reconfigure
+
+	@echo "\n$(tput_yellow)Selecting appropriate TF workspace$(tput_end)"
+	$(TF) workspace select $(env_short) || $(TF) workspace new $(env_short)
+
+.PHONY: plan
+plan:
+	@echo "\n$(tput_yellow)Running TF plan$(tput_end)"
+	$(TF) plan -var-file=envs/$(env_detected).tfvars -out=tfplan
+
+.PHONY: apply
+apply:
+	@echo "\n$(tput_yellow)Running TF apply$(tput_end)"
+	$(TF) apply tfplan
+
+.PHONY: exec
+exec:
+	@echo "\n$(tput_yellow)Opening a terminal into the Docker container$(tput_end)"
+	$(TF_EXEC)
